@@ -2,16 +2,24 @@ mod board;
 mod cell;
 mod input;
 mod render;
+mod solver;
 
 use std::io;
+use std::time::{Duration, Instant};
 
 use crossterm::{
-    cursor, execute,
+    cursor, event, execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
-use board::Board;
+use board::{Board, GameOutcome};
 use input::{Action, Direction};
+
+/// Zen mode speed: inputs per second (arrow keys, reveals, flags each count as one input).
+const ZEN_INPUTS_PER_SEC: f64 = 8.0;
+
+/// Pause after game ends in zen mode before restarting.
+const ZEN_END_PAUSE: Duration = Duration::from_secs(3);
 
 struct TerminalGuard;
 
@@ -53,7 +61,7 @@ fn select_difficulty(stdout: &mut impl io::Write) -> io::Result<Option<(usize, u
     }
 }
 
-fn run() -> io::Result<()> {
+fn run_interactive() -> io::Result<()> {
     let _guard = TerminalGuard::new()?;
     let mut stdout = io::stdout();
 
@@ -90,8 +98,89 @@ fn run() -> io::Result<()> {
     }
 }
 
+fn run_zen() -> io::Result<()> {
+    let _guard = TerminalGuard::new()?;
+    let mut stdout = io::stdout();
+    let input_delay = Duration::from_secs_f64(1.0 / ZEN_INPUTS_PER_SEC);
+
+    // Expert mode: 30x16, 99 mines
+    loop {
+        let mut board = Board::new(30, 16, 99);
+
+        loop {
+            render::render(&mut stdout, &board)?;
+
+            if board.outcome != GameOutcome::Playing {
+                if poll_quit(ZEN_END_PAUSE)? {
+                    return Ok(());
+                }
+                break;
+            }
+
+            let Some(mv) = solver::next_move(&board) else {
+                break;
+            };
+
+            let (tx, ty) = match mv {
+                solver::Move::Reveal(x, y) | solver::Move::Flag(x, y) => (x, y),
+            };
+
+            // Walk cursor to target one step at a time
+            while board.cursor_x != tx || board.cursor_y != ty {
+                if board.cursor_x < tx {
+                    board.move_cursor(1, 0);
+                } else if board.cursor_x > tx {
+                    board.move_cursor(-1, 0);
+                } else if board.cursor_y < ty {
+                    board.move_cursor(0, 1);
+                } else {
+                    board.move_cursor(0, -1);
+                }
+                render::render(&mut stdout, &board)?;
+                if poll_quit(input_delay)? {
+                    return Ok(());
+                }
+            }
+
+            // Perform the action (also one input tick)
+            if poll_quit(input_delay)? {
+                return Ok(());
+            }
+            match mv {
+                solver::Move::Reveal(x, y) => board.reveal(x, y),
+                solver::Move::Flag(x, y) => board.toggle_flag(x, y),
+            }
+        }
+    }
+}
+
+/// Wait for `duration`, but return true immediately if the user presses Q/Esc.
+/// Continuously drains all events during the wait so held keys can't speed things up.
+fn poll_quit(duration: Duration) -> io::Result<bool> {
+    let deadline = Instant::now() + duration;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(false);
+        }
+        if event::poll(remaining)? {
+            if let event::Event::Key(key) = event::read()? {
+                if key.kind == event::KeyEventKind::Press
+                    && matches!(key.code, event::KeyCode::Char('q') | event::KeyCode::Esc)
+                {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+}
+
 fn main() {
-    if let Err(e) = run() {
+    let zen = std::env::args().any(|arg| arg == "--zen");
+
+    let result = if zen { run_zen() } else { run_interactive() };
+
+    if let Err(e) = result {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }

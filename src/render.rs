@@ -6,8 +6,8 @@ use crossterm::{
     terminal,
 };
 
-use crate::board::{Board, GameOutcome};
-use crate::cell::CellState;
+use minesweeper::board::{Board, GameOutcome};
+use minesweeper::cell::CellState;
 
 fn number_color(n: u8) -> Color {
     match n {

@@ -1,8 +1,8 @@
-mod board;
-mod cell;
 mod input;
 mod render;
-mod solver;
+
+use minesweeper::board;
+use minesweeper::solver;
 
 use std::io;
 use std::time::{Duration, Instant};

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minesweeper</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    color: #ccc;
+    font-family: 'Menlo', 'Consolas', 'DejaVu Sans Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    user-select: none;
+  }
+  #screen {
+    white-space: pre;
+    font-size: 16px;
+    line-height: 1.35;
+    letter-spacing: 0.05em;
+    outline: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="screen" tabindex="0"></div>
+
+<script type="module">
+import init, { Game } from './pkg/minesweeper_web.js';
+
+await init();
+
+const screen = document.getElementById('screen');
+screen.focus();
+
+// Exact RGB colors from render.rs number_color()
+const NUMBER_COLORS = {
+  1: 'rgb(0,1,254)',     // blue
+  2: 'rgb(0,130,2)',     // green
+  3: 'rgb(254,0,0)',     // red
+  4: 'rgb(1,0,130)',     // dark blue
+  5: 'rgb(132,0,2)',     // maroon
+  6: 'rgb(0,130,130)',   // teal
+  7: 'rgb(132,1,133)',   // purple
+  8: 'rgb(115,115,115)', // gray
+};
+
+const PRESETS = [
+  [9, 9, 10],    // Beginner
+  [16, 16, 40],  // Intermediate
+  [30, 16, 99],  // Expert
+];
+
+const MENU_OPTIONS = [
+  'Beginner     (9 x 9,   10 mines)',
+  'Intermediate (16 x 16, 40 mines)',
+  'Expert       (30 x 16, 99 mines)',
+];
+
+let game = null;
+let menuSelected = 0;
+let mode = 'menu'; // 'menu' | 'playing' | 'gameover'
+let zenMode = false;
+let zenTimer = null;
+let zenCountdown = 0;
+let zenCountdownTimer = null;
+
+// --- Rendering ---
+
+function span(text, fg, bg, bold) {
+  let style = '';
+  if (fg) style += `color:${fg};`;
+  if (bg) style += `background:${bg};`;
+  if (bold) style += 'font-weight:bold;';
+  if (style) return `<span style="${style}">${escHtml(text)}</span>`;
+  return escHtml(text);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function centerPad(text, width) {
+  const pad = Math.max(0, Math.floor((width - text.length) / 2));
+  return ' '.repeat(pad) + text;
+}
+
+function renderMenu() {
+  const cols = 70;
+  let lines = [];
+  lines.push('');
+  lines.push(centerPad('MINESWEEPER', cols));
+  lines.push('');
+
+  for (let i = 0; i < MENU_OPTIONS.length; i++) {
+    const prefix = i === menuSelected ? '> ' : '  ';
+    const text = prefix + MENU_OPTIONS[i];
+    const padded = centerPad(text, cols);
+    if (i === menuSelected) {
+      lines.push(span(padded, 'yellow', null, true));
+    } else {
+      lines.push(escHtml(padded));
+    }
+  }
+
+  lines.push('');
+  lines.push(span(centerPad('Arrow keys to select, Enter to start', cols), 'rgb(128,128,128)'));
+  lines.push('');
+  lines.push(span(centerPad('Z: zen mode', cols), 'rgb(128,128,128)'));
+
+  screen.innerHTML = lines.join('\n');
+}
+
+function renderGame() {
+  if (!game) return;
+  const w = game.width();
+  const h = game.height();
+  const gridWidth = w * 3;
+  const cols = Math.max(gridWidth, 70);
+
+  let lines = [];
+
+  // Header
+  const header = `MINESWEEPER  ${w}x${h}    Mines: ${game.mine_count()}    Flags: ${game.flags_placed()}/${game.mine_count()}`;
+  lines.push(span(centerPad(header, cols), null, null, true));
+  lines.push('');
+
+  // Grid
+  const cx = game.cursor_x();
+  const cy = game.cursor_y();
+
+  for (let y = 0; y < h; y++) {
+    const pad = ' '.repeat(Math.max(0, Math.floor((cols - gridWidth) / 2)));
+    let row = pad;
+
+    for (let x = 0; x < w; x++) {
+      const state = game.cell_state(x, y);
+      const isCursor = (x === cx && y === cy);
+      const bg = isCursor ? 'rgb(128,128,0)' : null; // DarkYellow
+
+      if (state === 0) {
+        // Hidden: ■
+        row += span(' \u25A0 ', 'rgb(128,128,128)', bg);
+      } else if (state === 2) {
+        // Flagged: ⚑
+        row += span(' \u2691 ', 'rgb(254,0,0)', bg, true);
+      } else {
+        // Revealed
+        if (game.is_mine(x, y)) {
+          row += span(' \u2739 ', 'white', isCursor ? 'rgb(128,128,0)' : 'rgb(254,0,0)', false);
+        } else {
+          const adj = game.adjacent_mines(x, y);
+          if (adj === 0) {
+            row += span('   ', null, bg);
+          } else {
+            row += span(` ${adj} `, NUMBER_COLORS[adj], bg, true);
+          }
+        }
+      }
+    }
+    lines.push(row);
+  }
+
+  // Footer
+  lines.push('');
+  const controls = zenMode
+    ? 'Q: quit zen mode'
+    : 'Arrows/WASD: move | Space: reveal | F: flag | R: restart | Q: menu';
+  lines.push(span(centerPad(controls, cols), 'rgb(128,128,128)'));
+
+  // Win/loss message
+  const outcome = game.outcome();
+  if (outcome !== 0) {
+    lines.push('');
+    if (outcome === 1) {
+      const msg = zenMode
+        ? `  YOU WIN! Restarting in ${zenCountdown}...  `
+        : '  YOU WIN! Press R to play again or Q for menu.  ';
+      lines.push(centerPad(span(msg, 'black', 'rgb(0,200,0)', true), cols));
+    } else {
+      const msg = zenMode
+        ? `  GAME OVER! You hit a mine. Restarting in ${zenCountdown}...  `
+        : '  GAME OVER! You hit a mine. Press R to play again or Q for menu.  ';
+      lines.push(centerPad(span(msg, 'white', 'rgb(254,0,0)', true), cols));
+    }
+  }
+
+  screen.innerHTML = lines.join('\n');
+}
+
+function render() {
+  if (mode === 'menu') renderMenu();
+  else renderGame();
+}
+
+// --- Game control ---
+
+function startGame(preset) {
+  const [w, h, m] = PRESETS[preset];
+  game = new Game(w, h, m);
+  mode = 'playing';
+  render();
+}
+
+// --- Zen mode ---
+
+function startZen() {
+  zenMode = true;
+  game = new Game(30, 16, 99);
+  mode = 'playing';
+  render();
+  runZenStep();
+}
+
+function stopZen() {
+  zenMode = false;
+  clearTimeout(zenTimer);
+  clearInterval(zenCountdownTimer);
+  zenTimer = null;
+  zenCountdownTimer = null;
+}
+
+function runZenStep() {
+  if (!zenMode || !game) return;
+
+  if (game.outcome() !== 0) {
+    // Countdown then restart
+    zenCountdown = 3;
+    render();
+    zenCountdownTimer = setInterval(() => {
+      zenCountdown--;
+      render();
+      if (zenCountdown <= 0) {
+        clearInterval(zenCountdownTimer);
+        zenCountdownTimer = null;
+        game = new Game(30, 16, 99);
+        mode = 'playing';
+        render();
+        runZenStep();
+      }
+    }, 1000);
+    return;
+  }
+
+  const mv = game.solver_next_move();
+  if (mv.length === 0) return;
+
+  const [type, tx, ty] = mv;
+
+  // Walk cursor to target one step at a time, then act
+  walkCursorThen(tx, ty, () => {
+    if (type === 0) game.reveal(tx, ty);
+    else game.toggle_flag(tx, ty);
+    render();
+    zenTimer = setTimeout(runZenStep, 100);
+  });
+}
+
+function walkCursorThen(tx, ty, callback) {
+  if (!game || !zenMode) return;
+  const cx = game.cursor_x();
+  const cy = game.cursor_y();
+
+  if (cx === tx && cy === ty) {
+    callback();
+    return;
+  }
+
+  if (cx < tx) game.move_cursor(1, 0);
+  else if (cx > tx) game.move_cursor(-1, 0);
+  else if (cy < ty) game.move_cursor(0, 1);
+  else game.move_cursor(0, -1);
+
+  render();
+  zenTimer = setTimeout(() => walkCursorThen(tx, ty, callback), 100);
+}
+
+// --- Input ---
+
+screen.addEventListener('keydown', (e) => {
+  // Prevent scrolling
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) {
+    e.preventDefault();
+  }
+
+  if (mode === 'menu') {
+    handleMenuKey(e);
+  } else if (zenMode) {
+    if (e.key === 'q' || e.key === 'Escape') {
+      stopZen();
+      mode = 'menu';
+      render();
+    }
+  } else {
+    handleGameKey(e);
+  }
+});
+
+function handleMenuKey(e) {
+  switch (e.key) {
+    case 'ArrowUp': case 'w': case 'k':
+      menuSelected = Math.max(0, menuSelected - 1);
+      render();
+      break;
+    case 'ArrowDown': case 's': case 'j':
+      menuSelected = Math.min(2, menuSelected + 1);
+      render();
+      break;
+    case 'Enter': case ' ':
+      startGame(menuSelected);
+      break;
+    case 'z':
+      startZen();
+      break;
+  }
+}
+
+function handleGameKey(e) {
+  if (!game) return;
+  const outcome = game.outcome();
+
+  if (outcome !== 0) {
+    // Game over — only R and Q work
+    if (e.key === 'r') {
+      startGame(PRESETS.findIndex(p => p[0] === game.width() && p[1] === game.height()));
+    } else if (e.key === 'q' || e.key === 'Escape') {
+      mode = 'menu';
+      render();
+    }
+    return;
+  }
+
+  switch (e.key) {
+    case 'ArrowUp': case 'w': case 'k':
+      game.move_cursor(0, -1); render(); break;
+    case 'ArrowDown': case 's': case 'j':
+      game.move_cursor(0, 1); render(); break;
+    case 'ArrowLeft': case 'a': case 'h':
+      game.move_cursor(-1, 0); render(); break;
+    case 'ArrowRight': case 'd': case 'l':
+      game.move_cursor(1, 0); render(); break;
+    case ' ': case 'Enter':
+      game.reveal_at_cursor(); render(); break;
+    case 'f':
+      game.toggle_flag_at_cursor(); render(); break;
+    case 'r':
+      startGame(PRESETS.findIndex(p => p[0] === game.width() && p[1] === game.height()));
+      break;
+    case 'q': case 'Escape':
+      mode = 'menu'; render(); break;
+  }
+}
+
+// Mouse: click to move cursor + reveal, right-click to flag
+screen.addEventListener('click', (e) => {
+  if (mode !== 'playing' || !game || game.outcome() !== 0 && !zenMode) return;
+  if (zenMode) return;
+  const cell = getCellFromClick(e);
+  if (!cell) return;
+  game.reveal(cell.x, cell.y);
+  render();
+});
+
+screen.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (mode !== 'playing' || !game || game.outcome() !== 0 || zenMode) return;
+  const cell = getCellFromClick(e);
+  if (!cell) return;
+  game.toggle_flag(cell.x, cell.y);
+  render();
+});
+
+function getCellFromClick(e) {
+  if (!game) return null;
+  const rect = screen.getBoundingClientRect();
+  const style = getComputedStyle(screen);
+  const fontSize = parseFloat(style.fontSize);
+  const charW = fontSize * 0.6; // monospace approximate
+  const lineH = fontSize * 1.35;
+
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  // Grid starts at line 2 (header + blank line)
+  const gridStartY = 2 * lineH;
+  const gridRow = Math.floor((clickY - gridStartY) / lineH);
+  if (gridRow < 0 || gridRow >= game.height()) return null;
+
+  // Grid is centered: compute pad
+  const w = game.width();
+  const gridWidth = w * 3;
+  const cols = Math.max(gridWidth, 70);
+  const padChars = Math.max(0, Math.floor((cols - gridWidth) / 2));
+  const gridStartX = padChars * charW;
+  const gridCol = Math.floor((clickX - gridStartX) / (3 * charW));
+  if (gridCol < 0 || gridCol >= w) return null;
+
+  return { x: gridCol, y: gridRow };
+}
+
+// Keep focus
+screen.addEventListener('blur', () => setTimeout(() => screen.focus(), 10));
+
+// Init
+render();
+</script>
+</body>
+</html>

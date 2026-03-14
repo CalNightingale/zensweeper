@@ -1,5 +1,3 @@
-use rand::seq::SliceRandom;
-
 use crate::board::{Board, GameOutcome};
 use crate::cell::CellState;
 
@@ -34,8 +32,8 @@ pub fn next_move(board: &Board) -> Option<Move> {
         return Some(mv);
     }
 
-    // No logical move — guess.
-    random_guess(board)
+    // No logical move — make the safest guess.
+    smart_guess(board)
 }
 
 /// For each revealed number, check if we can trivially flag or reveal neighbors.
@@ -161,23 +159,74 @@ fn is_subset(small: &[(usize, usize)], big: &[(usize, usize)]) -> bool {
     small.iter().all(|c| big.contains(c))
 }
 
-fn random_guess(board: &Board) -> Option<Move> {
-    let mut candidates: Vec<(usize, usize)> = Vec::new();
+/// When no logical deduction is possible, estimate per-cell mine probability
+/// from adjacent constraints and pick the cell least likely to be a mine.
+/// Prefers frontier cells (adjacent to revealed) over interior unknowns,
+/// since they open up more deduction opportunities.
+fn smart_guess(board: &Board) -> Option<Move> {
+    let mut hidden: Vec<(usize, usize)> = Vec::new();
     for y in 0..board.height {
         for x in 0..board.width {
             if board.cell(x, y).state == CellState::Hidden {
-                candidates.push((x, y));
+                hidden.push((x, y));
             }
         }
     }
 
-    if candidates.is_empty() {
+    if hidden.is_empty() {
         return None;
     }
 
-    let mut rng = rand::rng();
-    candidates.shuffle(&mut rng);
-    Some(Move::Reveal(candidates[0].0, candidates[0].1))
+    let constraints = build_constraints(board);
+
+    // For each hidden cell, track the maximum mine probability any single
+    // constraint assigns to it. If no constraint touches a cell, use the
+    // global background probability (remaining mines / remaining hidden cells).
+    let remaining_mines = board.mine_count - board.flags_placed;
+    let background_prob = if hidden.is_empty() {
+        1.0
+    } else {
+        remaining_mines as f64 / hidden.len() as f64
+    };
+
+    let mut best: Option<((usize, usize), f64, bool)> = None; // (cell, prob, is_frontier)
+
+    for &(x, y) in &hidden {
+        // A cell is on the frontier if it neighbors at least one revealed cell.
+        let on_frontier = neighbors_of(board, x, y)
+            .iter()
+            .any(|&(nx, ny)| board.cell(nx, ny).state == CellState::Revealed);
+
+        // Compute max probability from all constraints that include this cell.
+        let mut max_prob: Option<f64> = None;
+        for c in &constraints {
+            if c.cells.contains(&(x, y)) {
+                let p = c.mines as f64 / c.cells.len() as f64;
+                max_prob = Some(match max_prob {
+                    Some(prev) => prev.max(p),
+                    None => p,
+                });
+            }
+        }
+
+        let prob = max_prob.unwrap_or(background_prob);
+
+        let is_better = match best {
+            None => true,
+            Some((_, best_prob, best_frontier)) => {
+                // Prefer frontier cells, then lower probability.
+                (on_frontier && !best_frontier)
+                    || (on_frontier == best_frontier && prob < best_prob)
+            }
+        };
+
+        if is_better {
+            best = Some(((x, y), prob, on_frontier));
+        }
+    }
+
+    let ((bx, by), _, _) = best?;
+    Some(Move::Reveal(bx, by))
 }
 
 fn neighbors_of(board: &Board, x: usize, y: usize) -> Vec<(usize, usize)> {

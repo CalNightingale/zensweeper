@@ -24,6 +24,14 @@ fn number_color(n: u8) -> Color {
 }
 
 pub fn render(stdout: &mut impl Write, board: &Board) -> io::Result<()> {
+    render_with_countdown(stdout, board, None)
+}
+
+pub fn render_with_countdown(
+    stdout: &mut impl Write,
+    board: &Board,
+    countdown: Option<u32>,
+) -> io::Result<()> {
     let (term_w, _) = terminal::size()?;
 
     // Calculate offset to center the grid
@@ -133,7 +141,10 @@ pub fn render(stdout: &mut impl Write, board: &Board) -> io::Result<()> {
     // Win/loss message
     match board.outcome {
         GameOutcome::Won => {
-            let msg = "  YOU WIN! Press R to play again or Q to quit.  ";
+            let msg = match countdown {
+                Some(s) => format!("  YOU WIN! Restarting in {s}...  "),
+                None => "  YOU WIN! Press R to play again or Q to quit.  ".to_string(),
+            };
             let msg_x = if (term_w as usize) > msg.len() {
                 ((term_w as usize) - msg.len()) / 2
             } else {
@@ -145,14 +156,16 @@ pub fn render(stdout: &mut impl Write, board: &Board) -> io::Result<()> {
                 SetBackgroundColor(Color::Green),
                 SetForegroundColor(Color::Black),
                 style::SetAttribute(style::Attribute::Bold),
-                style::Print(msg),
+                style::Print(&msg),
                 style::SetAttribute(style::Attribute::Reset),
-                SetBackgroundColor(Color::Reset),
-                SetForegroundColor(Color::Reset),
             )?;
         }
         GameOutcome::Lost => {
-            let msg = "  GAME OVER! You hit a mine. Press R to play again or Q to quit.  ";
+            let msg = match countdown {
+                Some(s) => format!("  GAME OVER! You hit a mine. Restarting in {s}...  "),
+                None => "  GAME OVER! You hit a mine. Press R to play again or Q to quit.  "
+                    .to_string(),
+            };
             let msg_x = if (term_w as usize) > msg.len() {
                 ((term_w as usize) - msg.len()) / 2
             } else {
@@ -164,10 +177,8 @@ pub fn render(stdout: &mut impl Write, board: &Board) -> io::Result<()> {
                 SetBackgroundColor(Color::Red),
                 SetForegroundColor(Color::White),
                 style::SetAttribute(style::Attribute::Bold),
-                style::Print(msg),
+                style::Print(&msg),
                 style::SetAttribute(style::Attribute::Reset),
-                SetBackgroundColor(Color::Reset),
-                SetForegroundColor(Color::Reset),
             )?;
         }
         GameOutcome::Playing => {}

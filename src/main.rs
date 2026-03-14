@@ -18,8 +18,8 @@ use input::{Action, Direction};
 /// Zen mode speed: inputs per second (arrow keys, reveals, flags each count as one input).
 const ZEN_INPUTS_PER_SEC: f64 = 8.0;
 
-/// Pause after game ends in zen mode before restarting.
-const ZEN_END_PAUSE: Duration = Duration::from_secs(3);
+/// Countdown seconds after game ends in zen mode before restarting.
+const ZEN_END_COUNTDOWN: u32 = 3;
 
 struct TerminalGuard;
 
@@ -111,8 +111,11 @@ fn run_zen() -> io::Result<()> {
             render::render(&mut stdout, &board)?;
 
             if board.outcome != GameOutcome::Playing {
-                if poll_quit(ZEN_END_PAUSE)? {
-                    return Ok(());
+                for s in (1..=ZEN_END_COUNTDOWN).rev() {
+                    render::render_with_countdown(&mut stdout, &board, Some(s))?;
+                    if poll_quit(Duration::from_secs(1))? {
+                        return Ok(());
+                    }
                 }
                 break;
             }

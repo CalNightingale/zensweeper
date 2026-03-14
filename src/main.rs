@@ -16,7 +16,7 @@ use board::{Board, GameOutcome};
 use input::{Action, Direction};
 
 /// Zen mode speed: inputs per second (arrow keys, reveals, flags each count as one input).
-const ZEN_INPUTS_PER_SEC: f64 = 8.0;
+const ZEN_INPUTS_PER_SEC: f64 = 10.0;
 
 /// Countdown seconds after game ends in zen mode before restarting.
 const ZEN_END_COUNTDOWN: u32 = 3;

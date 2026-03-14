@@ -11,14 +11,14 @@ use crate::cell::CellState;
 
 fn number_color(n: u8) -> Color {
     match n {
-        1 => Color::Blue,
-        2 => Color::Green,
-        3 => Color::Red,
-        4 => Color::DarkBlue,
-        5 => Color::DarkRed,
-        6 => Color::Cyan,
-        7 => Color::White,
-        8 => Color::Grey,
+        1 => Color::Rgb { r: 0, g: 1, b: 254 },       // blue
+        2 => Color::Rgb { r: 0, g: 130, b: 2 },        // green
+        3 => Color::Rgb { r: 254, g: 0, b: 0 },        // red
+        4 => Color::Rgb { r: 1, g: 0, b: 130 },        // dark blue
+        5 => Color::Rgb { r: 132, g: 0, b: 2 },        // maroon
+        6 => Color::Rgb { r: 0, g: 130, b: 130 },      // teal
+        7 => Color::Rgb { r: 132, g: 1, b: 133 },          // black
+        8 => Color::Rgb { r: 115, g: 115, b: 115 },    // gray
         _ => Color::Reset,
     }
 }
@@ -80,7 +80,7 @@ pub fn render_with_countdown(
                     queue!(
                         stdout,
                         SetForegroundColor(Color::DarkGrey),
-                        style::Print(" . "),
+                        style::Print(" ■ "),
                     )?;
                 }
                 CellState::Flagged => {
@@ -88,7 +88,7 @@ pub fn render_with_countdown(
                         stdout,
                         SetForegroundColor(Color::Red),
                         style::SetAttribute(style::Attribute::Bold),
-                        style::Print(" F "),
+                        style::Print(" ⚑ "),
                         style::SetAttribute(style::Attribute::NoBold),
                     )?;
                 }
@@ -98,7 +98,7 @@ pub fn render_with_countdown(
                             stdout,
                             SetBackgroundColor(Color::Red),
                             SetForegroundColor(Color::White),
-                            style::Print(" * "),
+                            style::Print(" ✹ "),
                         )?;
                     } else if cell.adjacent_mines == 0 {
                         queue!(

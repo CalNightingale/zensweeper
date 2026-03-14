@@ -178,8 +178,63 @@ fn poll_quit(duration: Duration) -> io::Result<bool> {
     }
 }
 
+fn run_bench(n: usize) {
+    let mut wins = 0usize;
+    let mut total_revealed_on_loss = 0usize;
+    let mut losses = 0usize;
+    let total_safe = 30 * 16 - 99; // Expert: 381 safe cells
+
+    for _ in 0..n {
+        let mut board = Board::new(30, 16, 99);
+        loop {
+            let Some(mv) = solver::next_move(&board) else {
+                break;
+            };
+            match mv {
+                solver::Move::Reveal(x, y) => board.reveal(x, y),
+                solver::Move::Flag(x, y) => board.toggle_flag(x, y),
+            }
+            if board.outcome != GameOutcome::Playing {
+                break;
+            }
+        }
+        match board.outcome {
+            GameOutcome::Won => wins += 1,
+            GameOutcome::Lost => {
+                losses += 1;
+                total_revealed_on_loss += board.cells_revealed;
+            }
+            GameOutcome::Playing => {
+                // Solver gave up (shouldn't happen with smart_guess)
+                losses += 1;
+                total_revealed_on_loss += board.cells_revealed;
+            }
+        }
+    }
+
+    let win_rate = wins as f64 / n as f64 * 100.0;
+    let avg_revealed = if losses > 0 {
+        total_revealed_on_loss as f64 / losses as f64
+    } else {
+        0.0
+    };
+    println!("Expert: {n} games, {wins} wins, {win_rate:.1}% win rate");
+    println!("Average revealed on loss: {avg_revealed:.0}/{total_safe}");
+}
+
 fn main() {
-    let zen = std::env::args().any(|arg| arg == "--zen");
+    let args: Vec<String> = std::env::args().collect();
+
+    if let Some(pos) = args.iter().position(|a| a == "--bench") {
+        let n = args
+            .get(pos + 1)
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(100);
+        run_bench(n);
+        return;
+    }
+
+    let zen = args.iter().any(|arg| arg == "--zen");
 
     let result = if zen { run_zen() } else { run_interactive() };
 

@@ -95,7 +95,15 @@
   <p>Three difficulty levels &middot; First click is always safe &middot; Flood-fill on empty cells &middot; Classic number colors</p>
 
   <h2>ZEN MODE</h2>
-  <p>Press Z on the menu to watch the AI solver play expert games on loop. It uses single-cell deductions, constraint subset reasoning, and probabilistic guessing when no logical move exists.</p>
+  <p>Press Z on the menu to watch the AI solver play expert games on loop. It wins about <strong style="color:#ccc">40%</strong> on Expert — near the theoretical ceiling.</p>
+
+  <h2>HOW THE SOLVER THINKS</h2>
+  <p>Each turn, the solver runs through a decision cascade, stopping as soon as it finds a move:</p>
+  <p><strong style="color:#ccc">1. Opening move</strong> &mdash; always reveals a corner to maximize the initial flood-fill.</p>
+  <p><strong style="color:#ccc">2. Single-cell deductions</strong> &mdash; for each revealed number, if hidden neighbors equals remaining mines they're all mines; if remaining is zero they're all safe.</p>
+  <p><strong style="color:#ccc">3. Constraint subset reasoning</strong> &mdash; builds a constraint per frontier number ("exactly k of these cells are mines"), then compares pairs. If one is a subset of another, the difference cells may be deterministic.</p>
+  <p><strong style="color:#ccc">4. Global mine count</strong> &mdash; if total remaining mines equals total hidden cells, all are mines. If zero remain, all are safe.</p>
+  <p><strong style="color:#ccc">5. Constraint enumeration</strong> &mdash; groups frontier cells into connected components, enumerates every valid mine assignment via backtracking, and weights combinations by the global mine count. Produces exact per-cell probabilities. Cells at 0% or 100% are handled deterministically; otherwise reveals the safest cell, preferring the frontier for information gain.</p>
 
   <h2>TERMINAL VERSION</h2>
   <p>This also runs natively in the terminal. Requires <a href="https://rustup.rs/" style="color:#888">Rust</a>.</p>

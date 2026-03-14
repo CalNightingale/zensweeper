@@ -110,11 +110,7 @@ pub fn render(stdout: &mut impl Write, board: &Board) -> io::Result<()> {
                 }
             }
 
-            queue!(
-                stdout,
-                SetBackgroundColor(Color::Reset),
-                SetForegroundColor(Color::Reset),
-            )?;
+            queue!(stdout, style::SetAttribute(style::Attribute::Reset))?;
         }
     }
 

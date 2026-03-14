@@ -7,15 +7,33 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: #000;
+    background: #0a0a0a;
     color: #ccc;
     font-family: 'Menlo', 'Consolas', 'DejaVu Sans Mono', monospace;
     display: flex;
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
-    padding: 20px;
+    padding: 40px 20px;
     user-select: none;
+  }
+  h1 {
+    font-size: 1.6rem;
+    color: #e0e0e0;
+    letter-spacing: 0.3em;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: #777;
+    font-size: 0.85rem;
+    margin-bottom: 24px;
+  }
+  #game-box {
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 20px 24px;
+    background: #000;
+    margin-bottom: 32px;
   }
   #screen {
     white-space: pre;
@@ -24,11 +42,66 @@
     letter-spacing: 0.05em;
     outline: none;
   }
+  .info {
+    max-width: 640px;
+    width: 100%;
+    color: #999;
+    font-size: 0.8rem;
+    line-height: 1.7;
+    font-family: 'Menlo', 'Consolas', 'DejaVu Sans Mono', monospace;
+  }
+  .info h2 {
+    color: #ccc;
+    font-size: 0.9rem;
+    margin: 16px 0 6px;
+    letter-spacing: 0.1em;
+  }
+  .info h2:first-child { margin-top: 0; }
+  .info table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 6px 0;
+  }
+  .info td {
+    padding: 2px 12px 2px 0;
+    white-space: nowrap;
+  }
+  .info td:first-child { color: #ccc; }
+  .info p { margin: 4px 0; }
+  .info .dim { color: #555; }
 </style>
 </head>
 <body>
 
-<div id="screen" tabindex="0"></div>
+<h1>MINESWEEPER</h1>
+<div class="subtitle">Classic Minesweeper in Rust &middot; play it or watch the AI solve it</div>
+
+<div id="game-box">
+  <div id="screen" tabindex="0"></div>
+</div>
+
+<div class="info">
+  <h2>CONTROLS</h2>
+  <table>
+    <tr><td>Arrow keys / WASD / hjkl</td><td>Move cursor</td></tr>
+    <tr><td>Space / Enter</td><td>Reveal cell</td></tr>
+    <tr><td>F</td><td>Toggle flag</td></tr>
+    <tr><td>R</td><td>Restart</td></tr>
+    <tr><td>Q / Esc</td><td>Back to menu</td></tr>
+  </table>
+  <p class="dim">Click to reveal &middot; Right-click to flag</p>
+
+  <h2>FEATURES</h2>
+  <p>Three difficulty levels &middot; First click is always safe &middot; Flood-fill on empty cells &middot; Classic number colors</p>
+
+  <h2>ZEN MODE</h2>
+  <p>Press Z on the menu to watch the AI solver play expert games on loop. It uses single-cell deductions, constraint subset reasoning, and probabilistic guessing when no logical move exists.</p>
+
+  <h2>TERMINAL VERSION</h2>
+  <p>This also runs natively in the terminal. Requires <a href="https://rustup.rs/" style="color:#888">Rust</a>.</p>
+  <p style="color:#ccc">cargo run&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim"># interactive</span></p>
+  <p style="color:#ccc">cargo run -- --zen&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim"># AI solver</span></p>
+</div>
 
 <script type="module">
 import init, { Game } from './pkg/minesweeper_web.js';
@@ -356,7 +429,7 @@ function handleGameKey(e) {
   }
 }
 
-// Mouse: click to move cursor + reveal, right-click to flag
+// Mouse: click to reveal, right-click to flag
 screen.addEventListener('click', (e) => {
   if (mode !== 'playing' || !game || game.outcome() !== 0 && !zenMode) return;
   if (zenMode) return;
@@ -403,8 +476,11 @@ function getCellFromClick(e) {
   return { x: gridCol, y: gridRow };
 }
 
-// Keep focus
-screen.addEventListener('blur', () => setTimeout(() => screen.focus(), 10));
+// Keep focus on game when clicking inside the game box
+document.getElementById('game-box').addEventListener('click', () => screen.focus());
+screen.addEventListener('blur', () => setTimeout(() => {
+  if (document.activeElement === document.body) screen.focus();
+}, 10));
 
 // Init
 render();

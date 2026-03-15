@@ -2,7 +2,69 @@ use wasm_bindgen::prelude::*;
 
 use minesweeper::board::{Board, GameOutcome};
 use minesweeper::cell::CellState;
+use minesweeper::settings;
 use minesweeper::solver;
+
+/// Returns background color as "r,g,b".
+#[wasm_bindgen]
+pub fn bg_color() -> String {
+    let (r, g, b) = settings::BG_COLOR;
+    format!("{r},{g},{b}")
+}
+
+/// Returns number colors as a flat array: [r1,g1,b1, r2,g2,b2, ..., r8,g8,b8] (24 elements).
+#[wasm_bindgen]
+pub fn number_colors() -> Vec<u8> {
+    let mut out = Vec::with_capacity(24);
+    for i in 1..=8 {
+        let (r, g, b) = settings::NUMBER_COLORS[i];
+        out.push(r);
+        out.push(g);
+        out.push(b);
+    }
+    out
+}
+
+/// Returns presets as a flat array: [w1,h1,m1, w2,h2,m2, w3,h3,m3] (9 elements).
+#[wasm_bindgen]
+pub fn presets() -> Vec<usize> {
+    settings::PRESETS
+        .iter()
+        .flat_map(|&(w, h, m)| [w, h, m])
+        .collect()
+}
+
+/// Returns menu option labels joined by newline.
+#[wasm_bindgen]
+pub fn menu_options() -> String {
+    settings::MENU_OPTIONS.join("\n")
+}
+
+/// Returns [hidden, flag, mine] symbols as a string (3 chars).
+#[wasm_bindgen]
+pub fn symbols() -> String {
+    [settings::SYMBOL_HIDDEN, settings::SYMBOL_FLAG, settings::SYMBOL_MINE]
+        .iter()
+        .collect()
+}
+
+/// Cell width in characters.
+#[wasm_bindgen]
+pub fn cell_width() -> usize {
+    settings::CELL_WIDTH
+}
+
+/// Zen mode end countdown in seconds.
+#[wasm_bindgen]
+pub fn zen_end_countdown() -> u32 {
+    settings::ZEN_END_COUNTDOWN
+}
+
+/// Zen mode step delay in milliseconds.
+#[wasm_bindgen]
+pub fn zen_step_ms() -> u32 {
+    (1000.0 / settings::ZEN_INPUTS_PER_SEC) as u32
+}
 
 #[wasm_bindgen]
 pub struct Game {

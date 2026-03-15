@@ -2,6 +2,7 @@ mod input;
 mod render;
 
 use minesweeper::board;
+use minesweeper::settings;
 use minesweeper::solver;
 
 use std::io;
@@ -14,12 +15,6 @@ use crossterm::{
 
 use board::{Board, GameOutcome};
 use input::{Action, Direction};
-
-/// Zen mode speed: inputs per second (arrow keys, reveals, flags each count as one input).
-const ZEN_INPUTS_PER_SEC: f64 = 10.0;
-
-/// Countdown seconds after game ends in zen mode before restarting.
-const ZEN_END_COUNTDOWN: u32 = 3;
 
 struct TerminalGuard;
 
@@ -39,7 +34,7 @@ impl Drop for TerminalGuard {
 }
 
 fn select_difficulty(stdout: &mut impl io::Write) -> io::Result<Option<(usize, usize, usize)>> {
-    let presets = [(9, 9, 10), (16, 16, 40), (30, 16, 99)];
+    let presets = settings::PRESETS;
     let mut selected: usize = 0;
 
     loop {
@@ -101,17 +96,17 @@ fn run_interactive() -> io::Result<()> {
 fn run_zen() -> io::Result<()> {
     let _guard = TerminalGuard::new()?;
     let mut stdout = io::stdout();
-    let input_delay = Duration::from_secs_f64(1.0 / ZEN_INPUTS_PER_SEC);
+    let input_delay = Duration::from_secs_f64(1.0 / settings::ZEN_INPUTS_PER_SEC);
 
-    // Expert mode: 30x16, 99 mines
+    let (ew, eh, em) = settings::PRESET_EXPERT;
     loop {
-        let mut board = Board::new(30, 16, 99);
+        let mut board = Board::new(ew, eh, em);
 
         loop {
             render::render(&mut stdout, &board)?;
 
             if board.outcome != GameOutcome::Playing {
-                for s in (1..=ZEN_END_COUNTDOWN).rev() {
+                for s in (1..=settings::ZEN_END_COUNTDOWN).rev() {
                     render::render_with_countdown(&mut stdout, &board, Some(s))?;
                     if poll_quit(Duration::from_secs(1))? {
                         return Ok(());
@@ -182,10 +177,11 @@ fn run_bench(n: usize) {
     let mut wins = 0usize;
     let mut total_revealed_on_loss = 0usize;
     let mut losses = 0usize;
-    let total_safe = 30 * 16 - 99; // Expert: 381 safe cells
+    let (ew, eh, em) = settings::PRESET_EXPERT;
+    let total_safe = ew * eh - em;
 
     for _ in 0..n {
-        let mut board = Board::new(30, 16, 99);
+        let mut board = Board::new(ew, eh, em);
         loop {
             let Some(mv) = solver::next_move(&board) else {
                 break;

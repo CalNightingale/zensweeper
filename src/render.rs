@@ -8,18 +8,19 @@ use crossterm::{
 
 use minesweeper::board::{Board, GameOutcome};
 use minesweeper::cell::CellState;
+use minesweeper::settings::{self, CELL_WIDTH, SYMBOL_FLAG, SYMBOL_HIDDEN, SYMBOL_MINE};
+
+fn bg() -> Color {
+    let (r, g, b) = settings::BG_COLOR;
+    Color::Rgb { r, g, b }
+}
 
 fn number_color(n: u8) -> Color {
-    match n {
-        1 => Color::Rgb { r: 0, g: 1, b: 254 },       // blue
-        2 => Color::Rgb { r: 0, g: 130, b: 2 },        // green
-        3 => Color::Rgb { r: 254, g: 0, b: 0 },        // red
-        4 => Color::Rgb { r: 1, g: 0, b: 130 },        // dark blue
-        5 => Color::Rgb { r: 132, g: 0, b: 2 },        // maroon
-        6 => Color::Rgb { r: 0, g: 130, b: 130 },      // teal
-        7 => Color::Rgb { r: 132, g: 1, b: 133 },          // black
-        8 => Color::Rgb { r: 115, g: 115, b: 115 },    // gray
-        _ => Color::Reset,
+    if (1..=8).contains(&n) {
+        let (r, g, b) = settings::NUMBER_COLORS[n as usize];
+        Color::Rgb { r, g, b }
+    } else {
+        Color::Reset
     }
 }
 
@@ -35,15 +36,19 @@ pub fn render_with_countdown(
     let (term_w, _) = terminal::size()?;
 
     // Calculate offset to center the grid
-    let grid_width = board.width * 3;
+    let grid_width = board.width * CELL_WIDTH;
     let offset_x = if (term_w as usize) > grid_width {
         ((term_w as usize) - grid_width) / 2
     } else {
         0
     };
 
-    queue!(stdout, terminal::Clear(terminal::ClearType::All))?;
-    queue!(stdout, cursor::MoveTo(0, 0))?;
+    queue!(
+        stdout,
+        SetBackgroundColor(bg()),
+        terminal::Clear(terminal::ClearType::All),
+        cursor::MoveTo(0, 0),
+    )?;
 
     // Header
     let header = format!(
@@ -61,6 +66,7 @@ pub fn render_with_countdown(
         style::SetAttribute(style::Attribute::Bold),
         style::Print(&header),
         style::SetAttribute(style::Attribute::Reset),
+        SetBackgroundColor(bg()),
     )?;
 
     // Grid
@@ -80,7 +86,7 @@ pub fn render_with_countdown(
                     queue!(
                         stdout,
                         SetForegroundColor(Color::DarkGrey),
-                        style::Print(" ■ "),
+                        style::Print(format!(" {} ", SYMBOL_HIDDEN)),
                     )?;
                 }
                 CellState::Flagged => {
@@ -88,8 +94,7 @@ pub fn render_with_countdown(
                         stdout,
                         SetForegroundColor(Color::Red),
                         style::SetAttribute(style::Attribute::Bold),
-                        style::Print(" ⚑ "),
-                        style::SetAttribute(style::Attribute::NoBold),
+                        style::Print(format!(" {} ", SYMBOL_FLAG)),
                     )?;
                 }
                 CellState::Revealed => {
@@ -98,7 +103,7 @@ pub fn render_with_countdown(
                             stdout,
                             SetBackgroundColor(Color::Red),
                             SetForegroundColor(Color::White),
-                            style::Print(" ✹ "),
+                            style::Print(format!(" {} ", SYMBOL_MINE)),
                         )?;
                     } else if cell.adjacent_mines == 0 {
                         queue!(
@@ -112,13 +117,16 @@ pub fn render_with_countdown(
                             SetForegroundColor(number_color(cell.adjacent_mines)),
                             style::SetAttribute(style::Attribute::Bold),
                             style::Print(format!(" {} ", cell.adjacent_mines)),
-                            style::SetAttribute(style::Attribute::NoBold),
                         )?;
                     }
                 }
             }
 
-            queue!(stdout, style::SetAttribute(style::Attribute::Reset))?;
+            queue!(
+                stdout,
+                style::SetAttribute(style::Attribute::Reset),
+                SetBackgroundColor(bg()),
+            )?;
         }
     }
 
@@ -135,7 +143,6 @@ pub fn render_with_countdown(
         cursor::MoveTo(controls_x as u16, footer_y),
         SetForegroundColor(Color::DarkGrey),
         style::Print(controls),
-        SetForegroundColor(Color::Reset),
     )?;
 
     // Win/loss message
@@ -158,6 +165,7 @@ pub fn render_with_countdown(
                 style::SetAttribute(style::Attribute::Bold),
                 style::Print(&msg),
                 style::SetAttribute(style::Attribute::Reset),
+                SetBackgroundColor(bg()),
             )?;
         }
         GameOutcome::Lost => {
@@ -179,6 +187,7 @@ pub fn render_with_countdown(
                 style::SetAttribute(style::Attribute::Bold),
                 style::Print(&msg),
                 style::SetAttribute(style::Attribute::Reset),
+                SetBackgroundColor(bg()),
             )?;
         }
         GameOutcome::Playing => {}
@@ -191,7 +200,11 @@ pub fn render_with_countdown(
 pub fn render_menu(stdout: &mut impl Write, selected: usize) -> io::Result<()> {
     let (term_w, term_h) = terminal::size()?;
 
-    queue!(stdout, terminal::Clear(terminal::ClearType::All))?;
+    queue!(
+        stdout,
+        SetBackgroundColor(bg()),
+        terminal::Clear(terminal::ClearType::All),
+    )?;
 
     let title = "MINESWEEPER";
     let title_x = ((term_w as usize).saturating_sub(title.len())) / 2;
@@ -203,13 +216,10 @@ pub fn render_menu(stdout: &mut impl Write, selected: usize) -> io::Result<()> {
         style::SetAttribute(style::Attribute::Bold),
         style::Print(title),
         style::SetAttribute(style::Attribute::Reset),
+        SetBackgroundColor(bg()),
     )?;
 
-    let options = [
-        "Beginner     (9 x 9,   10 mines)",
-        "Intermediate (16 x 16, 40 mines)",
-        "Expert       (30 x 16, 99 mines)",
-    ];
+    let options = settings::MENU_OPTIONS;
 
     for (i, option) in options.iter().enumerate() {
         let y = start_y + 2 + i;
@@ -229,7 +239,7 @@ pub fn render_menu(stdout: &mut impl Write, selected: usize) -> io::Result<()> {
                 style::SetAttribute(style::Attribute::Bold),
                 style::Print(&line),
                 style::SetAttribute(style::Attribute::Reset),
-                SetForegroundColor(Color::Reset),
+                SetBackgroundColor(bg()),
             )?;
         } else {
             queue!(stdout, style::Print(&line))?;
@@ -243,7 +253,6 @@ pub fn render_menu(stdout: &mut impl Write, selected: usize) -> io::Result<()> {
         cursor::MoveTo(hint_x as u16, (start_y + 6) as u16),
         SetForegroundColor(Color::DarkGrey),
         style::Print(hint),
-        SetForegroundColor(Color::Reset),
     )?;
 
     stdout.flush()?;

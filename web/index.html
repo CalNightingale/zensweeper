@@ -112,36 +112,40 @@
 </div>
 
 <script type="module">
-import init, { Game } from './pkg/minesweeper_web.js';
+import init, { Game, bg_color, number_colors, presets, menu_options, symbols, cell_width, zen_end_countdown, zen_step_ms } from './pkg/minesweeper_web.js';
 
 await init();
 
 const screen = document.getElementById('screen');
 screen.focus();
 
-// Exact RGB colors from render.rs number_color()
-const NUMBER_COLORS = {
-  1: 'rgb(0,1,254)',     // blue
-  2: 'rgb(0,130,2)',     // green
-  3: 'rgb(254,0,0)',     // red
-  4: 'rgb(1,0,130)',     // dark blue
-  5: 'rgb(132,0,2)',     // maroon
-  6: 'rgb(0,130,130)',   // teal
-  7: 'rgb(132,1,133)',   // purple
-  8: 'rgb(115,115,115)', // gray
-};
+// Load settings from shared Rust source via WASM
+const _nc = number_colors();
+const NUMBER_COLORS = {};
+for (let i = 0; i < 8; i++) {
+  NUMBER_COLORS[i + 1] = `rgb(${_nc[i*3]},${_nc[i*3+1]},${_nc[i*3+2]})`;
+}
 
-const PRESETS = [
-  [9, 9, 10],    // Beginner
-  [16, 16, 40],  // Intermediate
-  [30, 16, 99],  // Expert
-];
+const _pr = presets();
+const PRESETS = [];
+for (let i = 0; i < _pr.length; i += 3) {
+  PRESETS.push([_pr[i], _pr[i+1], _pr[i+2]]);
+}
 
-const MENU_OPTIONS = [
-  'Beginner     (9 x 9,   10 mines)',
-  'Intermediate (16 x 16, 40 mines)',
-  'Expert       (30 x 16, 99 mines)',
-];
+const MENU_OPTIONS = menu_options().split('\n');
+
+const _sym = symbols();
+const SYM_HIDDEN = _sym[0];
+const SYM_FLAG = _sym[1];
+const SYM_MINE = _sym[2];
+const CELL_W = cell_width();
+const ZEN_COUNTDOWN_SECS = zen_end_countdown();
+const ZEN_STEP_DELAY = zen_step_ms();
+const BG = `rgb(${bg_color()})`;
+
+// Apply background color from settings
+document.body.style.background = BG;
+document.getElementById('game-box').style.background = BG;
 
 let game = null;
 let menuSelected = 0;
@@ -202,7 +206,7 @@ function renderGame() {
   if (!game) return;
   const w = game.width();
   const h = game.height();
-  const gridWidth = w * 3;
+  const gridWidth = w * CELL_W;
   const cols = Math.max(gridWidth, 70);
 
   let lines = [];
@@ -226,21 +230,21 @@ function renderGame() {
       const bg = isCursor ? 'rgb(128,128,0)' : null; // DarkYellow
 
       if (state === 0) {
-        // Hidden: ■
-        row += span('\u25A0', 'rgb(128,128,128)', bg, false, 3);
+        // Hidden
+        row += span(SYM_HIDDEN, 'rgb(128,128,128)', bg, false, CELL_W);
       } else if (state === 2) {
-        // Flagged: ⚑
-        row += span('\u2691', 'rgb(254,0,0)', bg, true, 3);
+        // Flagged
+        row += span(SYM_FLAG, 'rgb(254,0,0)', bg, true, CELL_W);
       } else {
         // Revealed
         if (game.is_mine(x, y)) {
-          row += span('\u2739', 'white', isCursor ? 'rgb(128,128,0)' : 'rgb(254,0,0)', false, 3);
+          row += span(SYM_MINE, 'white', isCursor ? 'rgb(128,128,0)' : 'rgb(254,0,0)', false, CELL_W);
         } else {
           const adj = game.adjacent_mines(x, y);
           if (adj === 0) {
-            row += span(' ', null, bg, false, 3);
+            row += span(' ', null, bg, false, CELL_W);
           } else {
-            row += span(`${adj}`, NUMBER_COLORS[adj], bg, true, 3);
+            row += span(`${adj}`, NUMBER_COLORS[adj], bg, true, CELL_W);
           }
         }
       }
@@ -293,7 +297,8 @@ function startGame(preset) {
 
 function startZen() {
   zenMode = true;
-  game = new Game(30, 16, 99);
+  const [ew, eh, em] = PRESETS[2]; // Expert
+  game = new Game(ew, eh, em);
   mode = 'playing';
   render();
   runZenStep();
@@ -312,7 +317,7 @@ function runZenStep() {
 
   if (game.outcome() !== 0) {
     // Countdown then restart
-    zenCountdown = 3;
+    zenCountdown = ZEN_COUNTDOWN_SECS;
     render();
     zenCountdownTimer = setInterval(() => {
       zenCountdown--;
@@ -320,7 +325,8 @@ function runZenStep() {
       if (zenCountdown <= 0) {
         clearInterval(zenCountdownTimer);
         zenCountdownTimer = null;
-        game = new Game(30, 16, 99);
+        const [zw, zh, zm] = PRESETS[2];
+        game = new Game(zw, zh, zm);
         mode = 'playing';
         render();
         runZenStep();
@@ -339,7 +345,7 @@ function runZenStep() {
     if (type === 0) game.reveal(tx, ty);
     else game.toggle_flag(tx, ty);
     render();
-    zenTimer = setTimeout(runZenStep, 100);
+    zenTimer = setTimeout(runZenStep, ZEN_STEP_DELAY);
   });
 }
 
@@ -359,7 +365,7 @@ function walkCursorThen(tx, ty, callback) {
   else game.move_cursor(0, -1);
 
   render();
-  zenTimer = setTimeout(() => walkCursorThen(tx, ty, callback), 100);
+  zenTimer = setTimeout(() => walkCursorThen(tx, ty, callback), ZEN_STEP_DELAY);
 }
 
 // --- Input ---
@@ -475,11 +481,11 @@ function getCellFromClick(e) {
 
   // Grid is centered: compute pad
   const w = game.width();
-  const gridWidth = w * 3;
+  const gridWidth = w * CELL_W;
   const cols = Math.max(gridWidth, 70);
   const padChars = Math.max(0, Math.floor((cols - gridWidth) / 2));
   const gridStartX = padChars * charW;
-  const gridCol = Math.floor((clickX - gridStartX) / (3 * charW));
+  const gridCol = Math.floor((clickX - gridStartX) / (CELL_W * charW));
   if (gridCol < 0 || gridCol >= w) return null;
 
   return { x: gridCol, y: gridRow };

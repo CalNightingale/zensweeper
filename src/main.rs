@@ -56,6 +56,22 @@ fn select_difficulty(stdout: &mut impl io::Write) -> io::Result<Option<(usize, u
     }
 }
 
+fn check_terminal_size(board_width: usize, board_height: usize) -> io::Result<()> {
+    let (term_w, term_h) = terminal::size()?;
+    let need_w = board_width * settings::CELL_WIDTH;
+    let need_h = board_height + 6; // 2 header + grid + 1 gap + controls + win/loss
+    if (term_w as usize) < need_w || (term_h as usize) < need_h {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!(
+                "Terminal too small: need at least {}x{} but have {}x{}",
+                need_w, need_h, term_w, term_h
+            ),
+        ));
+    }
+    Ok(())
+}
+
 fn run_interactive() -> io::Result<()> {
     let _guard = TerminalGuard::new()?;
     let mut stdout = io::stdout();
@@ -65,6 +81,7 @@ fn run_interactive() -> io::Result<()> {
             return Ok(());
         };
 
+        check_terminal_size(width, height)?;
         let mut board = Board::new(width, height, mines);
 
         loop {
@@ -99,6 +116,7 @@ fn run_zen() -> io::Result<()> {
     let input_delay = Duration::from_secs_f64(1.0 / settings::ZEN_INPUTS_PER_SEC);
 
     let (ew, eh, em) = settings::PRESET_EXPERT;
+    check_terminal_size(ew, eh)?;
     loop {
         let mut board = Board::new(ew, eh, em);
 

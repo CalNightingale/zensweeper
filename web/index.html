@@ -153,11 +153,12 @@ let zenCountdownTimer = null;
 
 // --- Rendering ---
 
-function span(text, fg, bg, bold) {
+function span(text, fg, bg, bold, fixedWidth) {
   let style = '';
   if (fg) style += `color:${fg};`;
   if (bg) style += `background:${bg};`;
   if (bold) style += 'font-weight:bold;';
+  if (fixedWidth) style += `display:inline-block;width:${fixedWidth}ch;text-align:center;`;
   if (style) return `<span style="${style}">${escHtml(text)}</span>`;
   return escHtml(text);
 }
@@ -226,20 +227,20 @@ function renderGame() {
 
       if (state === 0) {
         // Hidden: ■
-        row += span(' \u25A0 ', 'rgb(128,128,128)', bg);
+        row += span('\u25A0', 'rgb(128,128,128)', bg, false, 3);
       } else if (state === 2) {
         // Flagged: ⚑
-        row += span(' \u2691 ', 'rgb(254,0,0)', bg, true);
+        row += span('\u2691', 'rgb(254,0,0)', bg, true, 3);
       } else {
         // Revealed
         if (game.is_mine(x, y)) {
-          row += span(' \u2739 ', 'white', isCursor ? 'rgb(128,128,0)' : 'rgb(254,0,0)', false);
+          row += span('\u2739', 'white', isCursor ? 'rgb(128,128,0)' : 'rgb(254,0,0)', false, 3);
         } else {
           const adj = game.adjacent_mines(x, y);
           if (adj === 0) {
-            row += span('   ', null, bg);
+            row += span(' ', null, bg, false, 3);
           } else {
-            row += span(` ${adj} `, NUMBER_COLORS[adj], bg, true);
+            row += span(`${adj}`, NUMBER_COLORS[adj], bg, true, 3);
           }
         }
       }
